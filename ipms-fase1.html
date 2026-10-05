@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPMS · Fase 1</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#eceee9;color:#17222c;margin:0}
+  header{background:#17222c;color:#fff;padding:.8rem 1.2rem;display:flex;justify-content:space-between;align-items:center}
+  header b span{color:#e5304a}
+  main{max-width:900px;margin:0 auto;padding:1rem}
+  .card{background:#fff;border:1px solid #d5d9d3;border-radius:8px;padding:1rem;margin-bottom:1rem}
+  input,select{padding:.5rem;border:1px solid #b9bfb8;border-radius:6px;margin:.2rem .4rem .6rem 0}
+  button{background:#17222c;color:#fff;border:0;border-radius:6px;padding:.5rem .9rem;cursor:pointer}
+  button.red{background:#e5304a}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:.5rem;border-bottom:1px solid #d5d9d3}
+  .tag{color:#fff;padding:.1rem .6rem;border-radius:99px;font-size:.85rem}
+  .activa{background:#1f8a5b}.por{background:#c9831a}.vencida{background:#c42b3f}
+  #login{max-width:340px;margin:12vh auto}
+  .err{color:#c42b3f}
+  .tw{overflow-x:auto}
+</style>
+</head>
+<body>
+
+<!-- Pantalla de inicio de sesión -->
+<div id="login" class="card">
+  <h2>Iron Pulse · IPMS</h2>
+  <form id="formLogin">
+    <input id="user" placeholder="Usuario" required><br>
+    <input id="pass" type="password" placeholder="Contraseña" required><br>
+    <button class="red">Entrar</button>
+    <p class="err" id="err"></p>
+  </form>
+  <small>Demo: <b>recepcion</b> o <b>gerente</b> / clave <b>1234</b></small>
+</div>
+
+<!-- Aplicación (se muestra después de entrar) -->
+<div id="app" hidden>
+  <header><b>Iron<span>Pulse</span> IPMS</b><span><span id="quien"></span> <button id="salir">Salir</button></span></header>
+  <main>
+    <div class="card">
+      <h3>Registrar miembro</h3>
+      <form id="formMiembro">
+        <input id="nombre" placeholder="Nombre completo" required>
+        <input id="tel" placeholder="Teléfono" required>
+        <select id="plan"></select>
+        <button class="red">Registrar y cobrar</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Miembros</h3>
+      <input id="buscar" placeholder="Buscar por nombre">
+      <div class="tw">
+        <table>
+          <thead><tr><th>Nombre</th><th>Plan</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="lista"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Pagos registrados</h3>
+      <p>Total cobrado hoy: <b id="totalHoy"></b></p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Fecha</th><th>Miembro</th><th>Plan</th><th>Monto</th></tr></thead>
+          <tbody id="pagos"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ---------- Datos iniciales (luego vendrán de PHP + MySQL) ----------
+const usuarios = [
+  { usuario: 'recepcion', clave: '1234', nombre: 'Carlos Ruiz', rol: 'Recepción' },
+  { usuario: 'gerente',   clave: '1234', nombre: 'Laura Peña',  rol: 'Gerente' }
+];
+const planes = [
+  { id: 1, nombre: 'Mensual',    dias: 30,  precio: 2500 },
+  { id: 2, nombre: 'Trimestral', dias: 90,  precio: 6500 },
+  { id: 3, nombre: 'Anual',      dias: 365, precio: 22000 }
+];
+let miembros = [];
+let pagos = [];
+let sesion = null;
+
+// ---------- Funciones de apoyo ----------
+const $ = id => document.getElementById(id);
+const hoy = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const sumarDias = (f, n) => { const d = new Date(f); d.setDate(d.getDate() + n); return d; };
+const aTexto = d => d.toLocaleDateString('es-DO');
+const dinero = n => 'RD$ ' + n.toLocaleString('es-DO');
+const planDe = id => planes.find(p => p.id === id);
+
+// El estado se calcula por la fecha de vencimiento
+function estado(m) {
+  const dias = Math.round((m.vence - hoy()) / 86400000);
+  if (dias < 0) return ['vencida', 'Vencida'];
+  if (dias <= 7) return ['por', 'Por vencer'];
+  return ['activa', 'Activa'];
+}
+
+// Registra un pago y extiende la membresía
+function cobrar(m, planId) {
+  const p = planDe(planId);
+  const base = m.vence >= hoy() ? m.vence : hoy();
+  m.planId = planId;
+  m.vence = sumarDias(base, p.dias);
+  pagos.push({ fecha: hoy(), miembro: m.nombre, plan: p.nombre, monto: p.precio });
+}
+
+// ---------- Pantalla ----------
+function mostrar() {
+  const filtro = $('buscar').value.toLowerCase();
+  $('lista').innerHTML = miembros
+    .filter(m => m.nombre.toLowerCase().includes(filtro))
+    .map(m => {
+      const [clase, texto] = estado(m);
+      return `<tr>
+        <td>${m.nombre}<br><small>${m.tel}</small></td>
+        <td>${planDe(m.planId).nombre}</td>
+        <td>${aTexto(m.vence)}</td>
+        <td><span class="tag ${clase}">${texto}</span></td>
+        <td><button onclick="renovar(${m.id})">Renovar</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5">Aún no hay miembros.</td></tr>';
+
+  $('pagos').innerHTML = [...pagos].reverse()
+    .map(p => `<tr><td>${aTexto(p.fecha)}</td><td>${p.miembro}</td><td>${p.plan}</td><td>${dinero(p.monto)}</td></tr>`)
+    .join('') || '<tr><td colspan="4">Sin pagos todavía.</td></tr>';
+
+  const total = pagos.filter(p => p.fecha.getTime() === hoy().getTime()).reduce((s, p) => s + p.monto, 0);
+  $('totalHoy').textContent = dinero(total);
+}
+
+function renovar(id) {
+  const m = miembros.find(x => x.id === id);
+  const p = planDe(m.planId);
+  if (confirm(`Renovar a ${m.nombre} con plan ${p.nombre} por ${dinero(p.precio)}?`)) {
+    cobrar(m, m.planId);
+    mostrar();
+  }
+}
+
+// ---------- Eventos ----------
+$('formLogin').addEventListener('submit', e => {
+  e.preventDefault();
+  const u = usuarios.find(x => x.usuario === $('user').value.trim() && x.clave === $('pass').value);
+  if (!u) { $('err').textContent = 'Usuario o contraseña incorrectos.'; return; }
+  sesion = u;
+  $('quien').textContent = `${u.nombre} · ${u.rol}`;
+  $('login').hidden = true;
+  $('app').hidden = false;
+  mostrar();
+});
+
+$('salir').addEventListener('click', () => {
+  sesion = null;
+  $('app').hidden = true;
+  $('login').hidden = false;
+  $('formLogin').reset();
+  $('err').textContent = '';
+});
+
+$('formMiembro').addEventListener('submit', e => {
+  e.preventDefault();
+  const m = {
+    id: Date.now(),
+    nombre: $('nombre').value.trim(),
+    tel: $('tel').value.trim(),
+    planId: Number($('plan').value),
+    vence: hoy()
+  };
+  miembros.push(m);
+  cobrar(m, m.planId);
+  e.target.reset();
+  mostrar();
+});
+
+$('buscar').addEventListener('input', mostrar);
+
+// Llenar el selector de planes
+$('plan').innerHTML = planes.map(p => `<option value="${p.id}">${p.nombre} · ${dinero(p.precio)}</option>`).join('');
+</script>
+</body>
+</html>
