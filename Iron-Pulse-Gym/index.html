@@ -1,0 +1,16 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IPMS · Iron Pulse Gym</title><link rel="stylesheet" href="css/estilos.css"></head><body>
+<div class="login"><h1 style="color:#1f3864">Iron Pulse <span style="color:#e8590c">IPMS</span></h1>
+<form id="f" class="card"><label>Correo<input id="c" type="email" required></label><br>
+<label>Contraseña<input id="p" type="password" required></label><br>
+<button class="pri">Iniciar sesión</button><p id="e" class="err"></p></form>
+<div class="card"><b>Cuentas de prueba</b> (contraseña 1234)<br><br><div id="demo" style="display:flex;flex-wrap:wrap;gap:.4rem"></div></div></div>
+<script src="js/db.js"></script>
+<script>
+$("#demo").innerHTML=DB.usuarios.map(u=>`<button onclick="c.value='${u.correo}';p.value='${u.clave}'">${u.rol}</button>`).join("");
+$("#f").onsubmit=e=>{e.preventDefault();
+ const u=DB.usuarios.find(u=>u.correo==c.value&&u.clave==p.value);
+ if(!u)return $("#e").textContent="Correo o contraseña incorrectos.";
+ if(!u.activo)return $("#e").textContent="Usuario deshabilitado.";
+ sessionStorage.setItem("ipms_ses",u.id);location="panel.html";};
+</script></body></html>
